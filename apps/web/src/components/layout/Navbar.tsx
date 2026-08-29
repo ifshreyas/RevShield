@@ -44,7 +44,7 @@ export const Navbar: React.FC = () => {
             <span>Extension</span>
           </Link>
           <a
-            href="https://github.com/revshield/revshield"
+            href="https://github.com/ifshreyas/RevShield"
             target="_blank"
             rel="noreferrer"
             className="text-sm font-medium text-text-secondary hover:text-text-primary flex items-center space-x-1.5 transition-colors"
@@ -103,7 +103,7 @@ export const Navbar: React.FC = () => {
             <span>Browser Extension</span>
           </Link>
           <a
-            href="https://github.com/revshield/revshield"
+            href="https://github.com/ifshreyas/RevShield"
             target="_blank"
             rel="noreferrer"
             onClick={() => setMobileOpen(false)}

@@ -8,7 +8,7 @@ export interface TrackerSignature {
 }
 
 export const KNOWN_TRACKER_SIGNATURES: TrackerSignature[] = [
-  // Analytics
+  // Analytics & Measurement
   { pattern: 'google-analytics.com', category: 'ANALYTICS', owner: 'Google LLC', description: 'Web traffic measurement & visitor behavior telemetry.' },
   { pattern: 'googletagmanager.com', category: 'ANALYTICS', owner: 'Google LLC', description: 'Tag management container system.' },
   { pattern: 'hotjar.com', category: 'SESSION_REPLAY', owner: 'Hotjar Ltd', description: 'Session recording, click maps, and user behavior heatmaps.' },
@@ -21,7 +21,7 @@ export const KNOWN_TRACKER_SIGNATURES: TrackerSignature[] = [
   { pattern: 'sentry.io', category: 'TELEMETRY', owner: 'Functional Software', description: 'Application performance and error telemetry.' },
   { pattern: 'datadoghq.com', category: 'TELEMETRY', owner: 'Datadog Inc', description: 'Real user monitoring and synthetic traces.' },
 
-  // Advertising
+  // Advertising Networks & Exchanges
   { pattern: 'doubleclick.net', category: 'ADVERTISING', owner: 'Google LLC', description: 'Programmatic display advertising network.' },
   { pattern: 'googlesyndication.com', category: 'ADVERTISING', owner: 'Google LLC', description: 'AdSense ad distribution and monetization.' },
   { pattern: 'adnxs.com', category: 'ADVERTISING', owner: 'AppNexus / Xandr', description: 'Digital ad exchange and real-time bidding.' },
@@ -34,7 +34,7 @@ export const KNOWN_TRACKER_SIGNATURES: TrackerSignature[] = [
   { pattern: 'amazon-adsystem.com', category: 'ADVERTISING', owner: 'Amazon.com Inc', description: 'Amazon Sponsored Products and display ad network.' },
   { pattern: 'advertising.com', category: 'ADVERTISING', owner: 'Yahoo Inc', description: 'Display and video advertising network.' },
 
-  // Social
+  // Social Trackers & Conversion Pixels
   { pattern: 'facebook.net', category: 'SOCIAL', owner: 'Meta Platforms Inc', description: 'Facebook Pixel, SDK, and cross-site social tracking.' },
   { pattern: 'connect.facebook.net', category: 'SOCIAL', owner: 'Meta Platforms Inc', description: 'Meta social tracking and graph connectors.' },
   { pattern: 'tiktok.com', category: 'SOCIAL', owner: 'ByteDance Ltd', description: 'TikTok analytics pixel and conversion tracking.' },
@@ -66,6 +66,28 @@ export interface DeclarativeRule {
   };
 }
 
+export type BlockType = 'AD' | 'TRACKER';
+
+export function isAdCategory(category: TrackerCategory): boolean {
+  return category === 'ADVERTISING';
+}
+
+export function isTrackerCategory(category: TrackerCategory): boolean {
+  return (
+    category === 'ANALYTICS' ||
+    category === 'SESSION_REPLAY' ||
+    category === 'SOCIAL' ||
+    category === 'TELEMETRY' ||
+    category === 'FINGERPRINTING' ||
+    category === 'CRYPTOMINING' ||
+    category === 'UNKNOWN'
+  );
+}
+
+export function classifyTrackerCategory(category: TrackerCategory): BlockType {
+  return isAdCategory(category) ? 'AD' : 'TRACKER';
+}
+
 export function compileDeclarativeNetRequestRules(
   signatures: TrackerSignature[] = KNOWN_TRACKER_SIGNATURES,
   whitelistedDomains: string[] = []
@@ -82,6 +104,15 @@ export function compileDeclarativeNetRequestRules(
       }
     };
   });
+}
+
+export function getRuleCategoryById(ruleId: number): BlockType {
+  const index = ruleId - 1001;
+  if (index >= 0 && index < KNOWN_TRACKER_SIGNATURES.length) {
+    const signature = KNOWN_TRACKER_SIGNATURES[index];
+    return classifyTrackerCategory(signature.category);
+  }
+  return 'TRACKER';
 }
 
 export function matchTrackerDomain(hostnameOrUrl: string): TrackerSignature | null {

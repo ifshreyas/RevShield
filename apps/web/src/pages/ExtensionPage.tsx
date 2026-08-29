@@ -33,7 +33,7 @@ export const ExtensionPage: React.FC = () => {
             <span>Install RevShield Extension</span>
           </a>
           <a
-            href="https://github.com/revshield/revshield/tree/main/apps/extension"
+            href="https://github.com/ifshreyas/RevShield/tree/main/apps/extension"
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center space-x-2 rounded-xl border border-border bg-surface hover:bg-surface-elevated px-5 py-3 text-sm font-semibold text-text-primary transition-all"

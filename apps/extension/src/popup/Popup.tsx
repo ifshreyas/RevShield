@@ -1,23 +1,41 @@
-import React, { useState, useEffect } from 'react';
-import { Shield, ShieldAlert, ShieldCheck, Settings, ExternalLink, RefreshCw, Eye, Zap, Info } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Shield, Settings, ExternalLink, Eye, Zap, Info, Power } from 'lucide-react';
 import { normalizeDomain, isInternalOrBrowserUrl, isPrivateOrLocalHost } from '@webshield/shared-utils';
+import { PopupDataResponse } from '../types/messages';
 
 export const Popup: React.FC = () => {
+  const [data, setData] = useState<PopupDataResponse | null>(null);
   const [currentDomain, setCurrentDomain] = useState<string>('Detecting...');
   const [isInternal, setIsInternal] = useState<boolean>(false);
-  const [isProtected, setIsProtected] = useState<boolean>(true);
-  const [trackersBlocked, setTrackersBlocked] = useState<number>(0);
-  const [adsBlocked, setAdsBlocked] = useState<number>(0);
-  const [totalTrackers, setTotalTrackers] = useState<number>(0);
+  const [currentTabId, setCurrentTabId] = useState<number | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const fetchPopupData = useCallback((tabId?: number, domain?: string) => {
+    if (typeof chrome !== 'undefined' && chrome.runtime) {
+      chrome.runtime.sendMessage(
+        { type: 'GET_POPUP_DATA', tabId, domain },
+        (response: PopupDataResponse) => {
+          if (response && !('error' in response)) {
+            setData(response);
+          }
+          setIsLoading(false);
+        }
+      );
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof chrome !== 'undefined' && chrome.tabs) {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const tab = tabs[0];
         if (tab && tab.url) {
+          const tabId = tab.id;
+          setCurrentTabId(tabId);
+
           if (isInternalOrBrowserUrl(tab.url)) {
             setIsInternal(true);
             setCurrentDomain('Browser Internal Page');
+            fetchPopupData(tabId, '');
             return;
           }
 
@@ -25,55 +43,47 @@ export const Popup: React.FC = () => {
           if (!domain) {
             setIsInternal(true);
             setCurrentDomain('New Tab');
+            fetchPopupData(tabId, '');
             return;
           }
 
           if (isPrivateOrLocalHost(domain)) {
             setIsInternal(true);
             setCurrentDomain(`${domain} (Local)`);
+            fetchPopupData(tabId, domain);
             return;
           }
 
           setCurrentDomain(domain);
           setIsInternal(false);
-
-          // Check if domain is whitelisted
-          chrome.storage.local.get(['whitelistedDomains', 'totalTrackersBlocked'], (res) => {
-            const list: string[] = res.whitelistedDomains || [];
-            const isWhitelisted = list.includes(domain);
-            setIsProtected(!isWhitelisted);
-            setTotalTrackers(res.totalTrackersBlocked || 0);
-          });
-
-          // Fetch tab stats
-          if (tab.id) {
-            chrome.runtime.sendMessage(
-              { type: 'GET_TAB_STATS', tabId: tab.id, domain },
-              (response) => {
-                if (response && response.stats) {
-                  setTrackersBlocked(response.stats.trackersBlocked || 0);
-                  setAdsBlocked(response.stats.adsBlocked || 0);
-                }
-              }
-            );
-          }
+          fetchPopupData(tabId, domain);
         }
       });
-    }
-  }, []);
 
-  const handleToggleProtection = () => {
-    if (isInternal) return;
-    const nextState = !isProtected;
-    setIsProtected(nextState);
+      // Real-time updates when storage changes while popup is open
+      const storageListener = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+        if (areaName === 'local') {
+          fetchPopupData(currentTabId, currentDomain);
+        }
+      };
 
-    if (typeof chrome !== 'undefined' && chrome.runtime) {
-      chrome.runtime.sendMessage({
-        type: 'TOGGLE_WHITELIST',
-        domain: currentDomain,
-        whitelisted: !nextState,
-      });
+      chrome.storage.onChanged.addListener(storageListener);
+      return () => {
+        chrome.storage.onChanged.removeListener(storageListener);
+      };
     }
+  }, [fetchPopupData, currentTabId, currentDomain]);
+
+  const handleToggleSiteProtection = () => {
+    if (isInternal || !data || !currentDomain) return;
+    const willWhitelist = data.isProtected; // If protected, we are adding to whitelist (disabling protection)
+
+    chrome.runtime.sendMessage(
+      { type: 'TOGGLE_SITE_PROTECTION', domain: currentDomain, whitelisted: willWhitelist },
+      () => {
+        fetchPopupData(currentTabId, currentDomain);
+      }
+    );
   };
 
   const handleOpenReport = () => {
@@ -96,6 +106,13 @@ export const Popup: React.FC = () => {
     }
   };
 
+  const isProtected = data?.isProtected ?? true;
+  const isGlobalEnabled = data?.protectionEnabled ?? true;
+  const trackersCount = data?.tabStats.trackersBlocked ?? 0;
+  const adsCount = data?.tabStats.adsBlocked ?? 0;
+  const totalGlobal = data?.globalStats.totalBlocked ?? 0;
+  const siteLifetimeTotal = data?.siteStats.totalBlocked ?? 0;
+
   return (
     <div className="w-[360px] bg-background text-text-primary p-4 space-y-4 font-sans select-none">
       {/* Header */}
@@ -106,7 +123,7 @@ export const Popup: React.FC = () => {
           </div>
           <div className="flex flex-col">
             <span className="text-sm font-semibold tracking-tight">RevShield</span>
-            <span className="text-[9px] uppercase font-mono tracking-widest text-text-muted -mt-1">Extension</span>
+            <span className="text-[9px] uppercase font-mono tracking-widest text-text-muted -mt-1">Continuous Protection</span>
           </div>
         </div>
         <button
@@ -126,14 +143,22 @@ export const Popup: React.FC = () => {
           </span>
           <span
             className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border ${
-              isInternal
+              !isGlobalEnabled
+                ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                : isInternal
                 ? 'bg-surface-elevated text-text-muted border-border'
                 : isProtected
                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                 : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
             }`}
           >
-            {isInternal ? 'INTERNAL' : isProtected ? 'PROTECTED' : 'WHITELISTED'}
+            {!isGlobalEnabled
+              ? 'PAUSED'
+              : isInternal
+              ? 'INTERNAL'
+              : isProtected
+              ? 'PROTECTED'
+              : 'WHITELISTED'}
           </span>
         </div>
 
@@ -146,7 +171,7 @@ export const Popup: React.FC = () => {
           <div className="flex items-center justify-between pt-1 border-t border-border/50">
             <span className="text-xs text-text-secondary">Protection for this site</span>
             <button
-              onClick={handleToggleProtection}
+              onClick={handleToggleSiteProtection}
               className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                 isProtected ? 'bg-accent' : 'bg-surface-elevated'
               }`}
@@ -161,7 +186,7 @@ export const Popup: React.FC = () => {
         )}
       </div>
 
-      {/* Block Counters */}
+      {/* Block Counters for Active Tab */}
       <div className="grid grid-cols-2 gap-2.5">
         <div className="rounded-xl border border-border bg-surface p-3 text-center space-y-1">
           <div className="flex items-center justify-center space-x-1 text-text-muted">
@@ -169,7 +194,7 @@ export const Popup: React.FC = () => {
             <span className="text-[10px] uppercase font-mono tracking-wider">Trackers</span>
           </div>
           <div className="text-xl font-bold font-mono text-text-primary">
-            {trackersBlocked}
+            {isLoading ? '-' : trackersCount}
           </div>
           <div className="text-[10px] text-text-muted">blocked this tab</div>
         </div>
@@ -180,13 +205,21 @@ export const Popup: React.FC = () => {
             <span className="text-[10px] uppercase font-mono tracking-wider">Ads</span>
           </div>
           <div className="text-xl font-bold font-mono text-text-primary">
-            {adsBlocked}
+            {isLoading ? '-' : adsCount}
           </div>
           <div className="text-[10px] text-text-muted">blocked this tab</div>
         </div>
       </div>
 
-      {/* Deep Link to WebShield Intelligence Platform */}
+      {/* Per-site lifetime stats if available */}
+      {!isInternal && siteLifetimeTotal > 0 && (
+        <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-surface-elevated text-xs font-mono text-text-muted">
+          <span>Site History:</span>
+          <span className="text-text-primary font-semibold">{siteLifetimeTotal} blocked on this domain</span>
+        </div>
+      )}
+
+      {/* Deep Link to RevShield Intelligence Report */}
       <button
         onClick={handleOpenReport}
         className="w-full flex items-center justify-center space-x-2 rounded-xl bg-accent hover:bg-accent-hover text-white py-2.5 text-xs font-semibold shadow-sm transition-all"
@@ -195,9 +228,9 @@ export const Popup: React.FC = () => {
         <ExternalLink className="h-3.5 w-3.5" />
       </button>
 
-      {/* Lifetime Stats Footer */}
+      {/* Global Lifetime Stats Footer */}
       <div className="text-center text-[10px] font-mono text-text-muted pt-1">
-        {totalTrackers.toLocaleString()} total threats intercepted locally
+        {totalGlobal.toLocaleString()} total threats intercepted locally
       </div>
     </div>
   );

@@ -43,7 +43,7 @@ export const Footer: React.FC = () => {
             <ul className="space-y-2 text-xs">
               <li>
                 <a
-                  href="https://github.com/revshield/revshield"
+                  href="https://github.com/ifshreyas/RevShield"
                   target="_blank"
                   rel="noreferrer"
                   className="text-text-secondary hover:text-text-primary transition-colors"

@@ -2,8 +2,6 @@
 
 > **Understand what happens behind every website.**  
 > Free, transparent, and open-source website security, privacy, tracker, cookie, and threat intelligence analysis platform with continuous local browser protection.
-
-
 ---
 
 ## 🌟 Overview
